@@ -27,6 +27,7 @@ linux: # This target assumes you have raylib installed onto /usr/local/(bin/incl
 	-lraylib \
 	-lfrustum \
 	-Ilibs \
+	-g3 \
 	-o bin/linux/game \
 	-DPLATFORM_DESKTOP \
 	$(ADDITIONAL_FLAGS)

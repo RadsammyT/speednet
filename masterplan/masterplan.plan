@@ -4,8 +4,8 @@
   "BoardIndex": 0,
   "BoardCount": 1,
   "AutoSave": true,
-  "Pan.X": -354.875,
-  "Pan.Y": -659.5,
+  "Pan.X": -414.2685546875,
+  "Pan.Y": -473.18450927734375,
   "ZoomLevel": 4,
   "TaskTransparency": 5,
   "OutlineTasks": true,
@@ -232,7 +232,7 @@
       "Progression.Current": 0,
       "Progression.Max": 0,
       "Description": "player must connect to matching colors.\ni guess the player is gonna make it far enough to the point\nwhere the colors are kinda meaningless now so once the timer hits 0\nthe already connected stations/lines turn white or something.\n\nalso its gonna be massively populated with stations in late-game\nso maybe add a indicator over the other one you have to connect\nthe line to",
-      "Selected": false,
+      "Selected": true,
       "TaskType.CurrentChoice": 2,
       "CreationTime": "Oct 28 2024 22:58:21"
     }, 
@@ -340,7 +340,7 @@
       "Progression.Current": 0,
       "Progression.Max": 0,
       "Description": "An expensive item that adds 10 seconds to the timer. Players should use this in an emergency if they\ndon't think they can make any connections in time unless they use the magic watch.\n\nFUNNY: make it play 2 seconds from a random timestamp of Night of Nights or use the fucking\nJJBA time stop SFX. might be against the copyright rule.",
-      "Selected": true,
+      "Selected": false,
       "TaskType.CurrentChoice": 2,
       "CreationTime": "Oct 28 2024 23:34:40"
     }
