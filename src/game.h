@@ -16,12 +16,40 @@
 #define JAM_GREEN	CLITERAL(Color){40, 198, 65, 255}
 
 #define DRAWTEXTCENTER(str, x, y, size, color) DrawText(str, x-(MeasureText(str,size)/2), y, size, color)
+#define DRAWTEXTCENTEREX(str, x, y, size, space, color) \
+	DrawTextEx(GetFontDefault(), str, {x-(MeasureText(str,size)/2), y}, size, space, color)
 #define V2IDX(vec) [(int)vec.y][(int)vec.x]
 
 #define DIRCOMP(vec, x1, y1, x2, y2, head, tail) (Vector2Equals({vec.x + x1, vec.y + y1}, tail) \
 		&& Vector2Equals({vec.x + x2, vec.y + y2}, head)) \
 	|| (Vector2Equals({vec.x + x1, vec.y + y1}, head) \
 		&& Vector2Equals({vec.x + x2, vec.y + y2}, tail))
+
+//UI POSITION
+#define SHOP_ICON_REC Rectangle{(float)GetScreenWidth()-100, 100, 95, 95}
+#define SHOP_MENU_BACKGROUND_REC \
+	Rectangle{100, 175, (float)GetScreenWidth()-200, 350}
+#define SHOP_MENU_PORTALS_REC \
+	Rectangle{200-50, 200, 300, 300}
+#define SHOP_MENU_BULLDOZER_REC \
+	Rectangle{700-50, 200, 300, 300}
+#define SHOP_MENU_MWATCH_REC \
+	Rectangle{1200-50, 200, 300, 300}
+
+#define SHOP_MENU_PORTALS_ICON \
+	Rectangle{250, 250, 100, 100}
+#define SHOP_MENU_BULLDOZER_ICON \
+	Rectangle{750, 250, 100, 100}
+#define SHOP_MENU_MWATCH_ICON \
+	Rectangle{1250, 250, 100, 100}
+
+#define ASSET_ICON_REC Rectangle{0,0,16,16}
+
+//SHOP COSTS
+#define SHOP_PORTAL_COST 5
+#define SHOP_BULLDOZER_COST 10
+#define SHOP_MWATCH_COST 12
+#define SHOP_TIMEUPGRADE_COST 20
 
 //BUILD CONFIGS
 #define SKIP_PALETTE 1
@@ -41,7 +69,8 @@ static Color palette[8] = {
 enum class ItemType {
 	PORTAL_PAIR,
 	BULLDOZER,
-	MAGIC_WATCH
+	MAGIC_WATCH,
+	NONE
 };
 
 enum class GridElementType {
@@ -72,10 +101,13 @@ struct Assets {
 		portalPair,
 		bulldozer,
 		magicWatch,
-		timeUpgrade;
+		timeUpgrade,
+		shopIcon,
+		coinIcon;
 
 	Sound
 		timeWarning,
+		lineStep,
 		coin;
 
 	Assets();
@@ -86,7 +118,7 @@ struct GridElement {
 	union {
 		struct {
 			Color col;
-			uint32_t pairID;
+			uint32_t pairID; // this CAN be UINT32_MAX to indicate unassigned
 			bool survivedTimer;
 			bool connectedToPair;
 			bool connectsToAll;
@@ -107,7 +139,6 @@ struct GridElement {
 struct Item {
 	ItemType type;
 	int quantity;
-	bool modified;
 };
 
 struct Game;
@@ -120,6 +151,8 @@ struct Grid {
 	Camera2D cam;
 
 	uint32_t pairIDCounter = 0;
+
+	Rectangle areaOfPopulation;
 
 	void resizeGrid(int x, int y);
 	void eraseProposedLines(std::vector<Vector2>& lines);
@@ -143,10 +176,14 @@ struct Game {
 	Grid grid;
 
 	Item items[3];
+	int coins = 0;
 
 	Assets assets;
 
+	int paletteNum = -1;
+
 	float currentMaxTime;
+	float timeUpgrade = 0.0f;
 	float currentTime;
 
 	int pairsOnTimer = 1;
@@ -155,8 +192,14 @@ struct Game {
 	Vector2 previousHeldCell = {0, 0};
 	Vector2 currentHeldCell = {0, 0};
 	Vector2 proposedLineStart = {0, 0};
+	bool forbidLineProposal = false;
 	bool proposingLine = false;
 	bool lineAccepted = false;
+
+	bool inShop = false;
+	ItemType usingItem = ItemType::NONE;
+
+	bool portalPairPlace = false;
 
 	std::vector<Vector2> proposedLine;
 };

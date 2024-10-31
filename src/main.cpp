@@ -11,11 +11,14 @@ int main() {
 
 	InitAudioDevice();
 
+	InitWindow(1600, 800, "RaylibJam");
+	SetTargetFPS(60);
+	rlImGuiSetup(true);
 	Game game;
 	game.mgs = MainGameState::PALETTETEST;
 	bool showDemoWindow = false;
-	InitWindow(1600, 800, "RaylibJam");
-	rlImGuiSetup(true);
+	bool showDebugRectangle = false;;
+	Rectangle debugRectangle = {0,0,0,0};
 	while(!WindowShouldClose()) {
 		BeginDrawing();
 			switch(game.mgs) {
@@ -31,6 +34,7 @@ int main() {
 				case MainGameState::GAMEOVER:
 					break;
 			}
+#if DEBUG
 			rlImGuiBegin();
 				ImGui::Begin("test");
 
@@ -40,9 +44,18 @@ int main() {
 						floorf(Clamp(mouseGridPos.y, 0, (game.grid.size.y-1)*10)/10),
 					};
 
+
 					ImGui::Checkbox("demo", &showDemoWindow);
+					ImGui::Checkbox("debug rect", &showDebugRectangle);
+					if(showDebugRectangle) {
+						ImGui::DragFloat4("XYWH", &debugRectangle.x);
+					}
+					ImGui::Text("FPS: %d", GetFPS());
 					ImGui::Text("MouseWorldPos: %f %f", mouseGridPos.x, mouseGridPos.y);
 					ImGui::Text("MouseWorldPos: %d %d", (int)hoveredCell.x, (int)hoveredCell.y);
+					ImGui::Text("camzoom: %f", game.grid.cam.zoom);
+					ImGui::Text("pairsOnTimer: %d", game.pairsOnTimer);
+					ImGui::Text("ratio: %f", game.grid.stationLineRatio());
 					if(ImGui::TreeNode("proposedLines")) {
 						for(auto& i: game.proposedLine) {
 							ImGui::Text("%d %d", (int)i.x, (int)i.y);
@@ -53,7 +66,8 @@ int main() {
 						for(int y = 0; y < game.grid.elements.size(); y++) {
 							for(int x = 0; x < game.grid.elements[y].size(); x++) {
 								if(game.grid.elements[y][x].type == GridElementType::STATION)
-									ImGui::Text("%d %d", x, y);
+									ImGui::Text("%d %d C:%d", x, y,
+											game.grid.elements[y][x].data.station.connectedToPair);
 							}
 						}
 						ImGui::TreePop();
@@ -65,6 +79,10 @@ int main() {
 				ImGui::End();
 				if(showDemoWindow) ImGui::ShowDemoWindow();
 			rlImGuiEnd();
+			if(showDebugRectangle) {
+				DrawRectangleRec(debugRectangle, RED);
+			}
+#endif // DEBUG
 		EndDrawing();
 	}
 	rlImGuiShutdown();
