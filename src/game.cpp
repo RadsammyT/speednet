@@ -1,5 +1,6 @@
 #include <cassert>
 #include <cmath>
+#include <cstdint>
 #include <raylib.h>
 #include <raymath.h>
 #include <rlgl.h>
@@ -41,6 +42,13 @@ LineDirs findDir(Vector2 tail, Vector2 middle, Vector2 head) {
 
 Assets::Assets() {
 	coin = LoadSound("res/web/coin.wav");
+	timeWarning = LoadSound("res/web/timer.wav");
+	lineStep = LoadSound("res/web/lineStep.wav");
+	lineConnect = LoadSound("res/web/lineConnect.wav");
+	failLaser = LoadSound("res/web/fail.wav");
+	failBoom = LoadSound("res/web/fail2.wav");
+	success = LoadSound("res/web/success.wav");
+	bulldozerSound = LoadSound("res/web/bulldozer.wav");
 
 	portalPair = LoadTexture("res/web/portal-icon.png");
 	bulldozer = LoadTexture("res/web/bulldozer-icon.png");
@@ -50,7 +58,7 @@ Assets::Assets() {
 
 void OnInGame(Game &game) {
 	ClearBackground(JAM_BLACK);
-	if(IsMouseButtonDown(MOUSE_BUTTON_MIDDLE)) {
+	if(IsMouseButtonDown(MOUSE_BUTTON_MIDDLE) && !game.inShop) {
 		game.grid.cam.target = 
 			Vector2Add(
 					game.grid.cam.target, 
@@ -72,20 +80,81 @@ void OnInGame(Game &game) {
 		floorf(Clamp(mouseGridPos.x, 0, (game.grid.size.x-1)*10)/10),
 		floorf(Clamp(mouseGridPos.y, 0, (game.grid.size.y-1)*10)/10),
 	};
-	if(game.usingItem != ItemType::NONE) {
+	game.smoothHoveredCell.x -= floorf(Clamp(game.smoothHoveredCell.x - hoveredCell.x, -1, 1));
+	game.smoothHoveredCell.y -= floorf(Clamp(game.smoothHoveredCell.y - hoveredCell.y, -1, 1));
+	if(game.usingItem != ItemType::NONE && !game.inShop) {
+		switch(game.usingItem) {
+                case ItemType::PORTAL_PAIR:
+					if(IsMouseButtonPressed(MOUSE_BUTTON_LEFT)
+							&& game.grid.elements V2IDX(game.smoothHoveredCell)
+							.type == GridElementType::UNOCCUPIED) {
+						game.grid.elements V2IDX(game.smoothHoveredCell)
+							.type = GridElementType::STATION;
+						game.grid.elements V2IDX(game.smoothHoveredCell)
+							.data.station = {
+								.col = JAM_PURPLE,
+								.pairID = UINT32_MAX,
+								.portalID = game.grid.pairIDCounter,
+								.connectsToAll = true,
+							};
+						game.proposedLine.push_back(game.smoothHoveredCell);
+						if(game.proposedLine.size() >= 2) {
+							game.proposedLine.clear();
+							game.grid.pairIDCounter++;
+							game.consume(ItemType::PORTAL_PAIR);
+							game.usingItem = ItemType::NONE;
+						}
+					}
+					if(IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) {
+						game.grid.eraseProposedLines(game.proposedLine);
+						game.usingItem = ItemType::NONE;
+					}
+					break;
+                case ItemType::BULLDOZER:
+					if(IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) {
+						game.usingItem = ItemType::NONE;
+					}
+					if(IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+						int id = 0;
+						auto& cell = game.grid.elements V2IDX(game.smoothHoveredCell);
+						if(cell.type == GridElementType::STATION) {
+							if(cell.data.station.connectsToAll) {
+								break;
+							}
+							id = cell.data.station.pairID;
 
+						} 
+						if(cell.type == GridElementType::LINE) id = cell.data.line.pairID;
+						PlaySound(game.assets.bulldozerSound);
+						game.grid.eraseAllOfPair(id);
+						game.usingItem = ItemType::NONE;
+						game.consume(ItemType::BULLDOZER);
+					}
+					break;
+                case ItemType::MAGIC_WATCH:
+					game.currentTime += 10;
+					game.usingItem = ItemType::NONE;
+					game.consume(ItemType::MAGIC_WATCH);
+					break;
+                case ItemType::NONE:
+					assert(game.usingItem != ItemType::NONE);
+                	break;
+		}
 	}
 	if(!game.inShop && !game.forbidLineProposal && game.usingItem == ItemType::NONE) {
 		if(!game.proposingLine) {
-			if(IsMouseButtonDown(MOUSE_BUTTON_LEFT) && !game.lineAccepted) {
-				if(game.grid.elements[(int)hoveredCell.y][(int)hoveredCell.x].type
+			if(IsMouseButtonDown(MOUSE_BUTTON_LEFT) && !game.lineAccepted &&
+					CheckCollisionPointRec(mouseGridPos, {0,0,
+						(float)game.grid.size.x*10,(float)game.grid.size.y*10})) {
+				if(game.grid.elements[(int)game.smoothHoveredCell.y][(int)game.smoothHoveredCell.x].type
 						== GridElementType::STATION) {
-					if(game.grid.elements V2IDX(hoveredCell).data.station.connectedToPair) 
+					if(game.grid.elements V2IDX(game.smoothHoveredCell).data.station.connectedToPair ||
+							game.grid.elements V2IDX(game.smoothHoveredCell).data.station.connectsToAll) 
 						goto skip;
 					game.proposingLine = true;
-					game.proposedLineStart = hoveredCell;
-					game.currentHeldCell = hoveredCell;
-					game.previousHeldCell = hoveredCell;
+					game.proposedLineStart = game.smoothHoveredCell;
+					game.currentHeldCell = game.smoothHoveredCell;
+					game.previousHeldCell = game.smoothHoveredCell;
 				}
 				game.proposedLine.clear();
 			} else {
@@ -95,40 +164,69 @@ void OnInGame(Game &game) {
 		} else {
 			if(IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
 
-				if(!Vector2Equals(hoveredCell, game.currentHeldCell)) {
-					if(Vector2Equals(hoveredCell, game.previousHeldCell)) {
+				if(!Vector2Equals(game.smoothHoveredCell, game.currentHeldCell)) {
+					if(Vector2Equals(game.smoothHoveredCell, game.previousHeldCell)) {
 						game.proposingLine = false;
 						game.grid.eraseProposedLines(game.proposedLine);
 						goto skip;
 					}
-					if(game.grid.elements V2IDX(hoveredCell).type != GridElementType::UNOCCUPIED) {
+					if(game.grid.elements 
+							V2IDX(game.smoothHoveredCell).type != GridElementType::UNOCCUPIED) {
 						// check if station, or line
-						if(game.grid.elements V2IDX(hoveredCell).type == GridElementType::LINE) {
+						if(game.grid.elements 
+								V2IDX(game.smoothHoveredCell).type == GridElementType::LINE) {
 							game.proposingLine = false;
 							game.grid.eraseProposedLines(game.proposedLine);
 							goto skip;
 						}
-						if(game.grid.elements V2IDX(hoveredCell).type == GridElementType::STATION) {
-							if(Vector2Equals(game.proposedLineStart, hoveredCell)) {
+						if(game.grid.elements 
+								V2IDX(game.smoothHoveredCell).type == GridElementType::STATION) {
+							if(Vector2Equals(game.proposedLineStart, game.smoothHoveredCell)) {
 								game.proposingLine = false;
 								game.grid.eraseProposedLines(game.proposedLine);
 								goto skip;
 							}
 							if( game.grid.elements 
-									V2IDX(hoveredCell).data.station.pairID ==
+									V2IDX(game.smoothHoveredCell).data.station.pairID ==
 								game.grid.elements 
 									V2IDX(game.proposedLineStart).data.station.pairID ||
-									game.grid.elements V2IDX(hoveredCell)
+									game.grid.elements V2IDX(game.smoothHoveredCell)
 									.data.station.connectsToAll){
 								 game.grid.elements 
-									V2IDX(hoveredCell).data.station.connectedToPair = true;
-								 if(game.grid.elements
-										 V2IDX(hoveredCell).data.station.connectsToAll) {
-										 game.grid.elements V2IDX(hoveredCell)
-											 .data.station.pairID =
-											 game.grid.elements V2IDX(game.proposedLineStart)
-											 .data.station.pairID; 
-								 }
+									V2IDX(game.smoothHoveredCell).data.station.connectedToPair = true;
+								if(game.grid.elements
+										V2IDX(game.smoothHoveredCell).data.station.connectsToAll &&
+											(
+											game.grid.elements
+											V2IDX(game.smoothHoveredCell).data.station.pairID 
+											== UINT32_MAX
+											||
+											game.grid.elements
+											V2IDX(game.smoothHoveredCell).data.station.pairID == 
+											game.grid.elements
+											V2IDX(game.proposedLineStart).data.station.pairID
+											)
+										) {
+										game.grid.elements V2IDX(game.smoothHoveredCell)
+											.data.station.pairID =
+											game.grid.elements V2IDX(game.proposedLineStart)
+												.data.station.pairID; 
+										game.grid.bindPortalToPair(
+												game.grid.elements V2IDX(game.smoothHoveredCell)
+												.data.station.portalID, 
+												game.grid.elements V2IDX(game.proposedLineStart)
+												.data.station.pairID);
+								} else if(game.grid.elements V2IDX(game.smoothHoveredCell)
+										.data.station.connectsToAll) {
+									game.proposingLine= false;
+									game.grid.elements 
+									V2IDX(game.smoothHoveredCell).data.station.connectedToPair
+									= false;
+									game.grid.eraseProposedLines(game.proposedLine);
+									goto skip;
+								}
+
+								PlaySound(game.assets.lineConnect);
 								 game.grid.elements 
 									V2IDX(game.proposedLineStart).data.station.connectedToPair = true;
 								 game.proposingLine = false;
@@ -145,7 +243,8 @@ void OnInGame(Game &game) {
 							GridElementType::STATION) {
 						game.proposedLine.push_back(game.currentHeldCell);
 						game.grid.elements V2IDX(game.currentHeldCell).type = GridElementType::LINE;
-						if(findDir(game.previousHeldCell, game.currentHeldCell, hoveredCell) == 
+						if(findDir(game.previousHeldCell,
+									game.currentHeldCell, game.smoothHoveredCell) == 
 								LineDirs::DEBUG_SHAPE) {
 							game.proposingLine = false;
 							game.grid.eraseProposedLines(game.proposedLine);
@@ -154,7 +253,8 @@ void OnInGame(Game &game) {
 						game.grid.elements V2IDX(game.currentHeldCell).data = {
 							.line = {
 								.dir =
-									findDir(game.previousHeldCell, game.currentHeldCell, hoveredCell),
+									findDir(game.previousHeldCell, game.currentHeldCell,
+											game.smoothHoveredCell),
 								.col =
 									game.grid.elements V2IDX(game.proposedLineStart).data.station.col,
 								.pairID =
@@ -162,9 +262,11 @@ void OnInGame(Game &game) {
 									V2IDX(game.proposedLineStart).data.station.pairID
 							}
 						};
+						SetSoundPitch(game.assets.lineStep, (RAND_FLOAT_BI));
+						PlaySound(game.assets.lineStep);
 					}
 						game.previousHeldCell = game.currentHeldCell;
-						game.currentHeldCell = hoveredCell;
+						game.currentHeldCell = game.smoothHoveredCell;
 				}
 			} else {
 				game.proposingLine = false;
@@ -176,35 +278,50 @@ void OnInGame(Game &game) {
 skip:
 #if DEBUG
 	if(IsKeyPressed(KEY_R)) {
-		if(game.grid.size.x == game.grid.size.y) {
-			game.grid.resizeGrid(game.grid.size.x * 2, game.grid.size.y);
-		} else {
-			game.grid.resizeGrid(game.grid.size.x, game.grid.size.y * 2);
-		}
 	}
 	if(IsKeyPressed(KEY_P)) {
 		game.grid.populate(1);
 	}
 #endif
 
-	if(!game.inShop)
-		game.currentTime -= GetFrameTime();
-	else
-		game.currentTime -= GetFrameTime()/10;
+	float oldTimer = game.currentTime;
+	if(game.grid.inDanger()) {
+		if(!game.inShop && game.usingItem == ItemType::NONE)
+			game.currentTime -= GetFrameTime();
+		else
+			game.currentTime -= GetFrameTime()/10;
+	} else {
+		game.currentTime -= GetFrameTime() * 2;
+	}
+	if(floorf(oldTimer) != floorf(game.currentTime) && game.currentTime <= 5 &&
+			game.grid.inDanger()) {
+		PlaySound(game.assets.timeWarning);
+	}
 	if(game.currentTime <= 0){
 		game.proposingLine = false;
+		game.usingItem = ItemType::NONE;
 		game.grid.eraseProposedLines(game.proposedLine);
+
+		if(game.grid.inDanger()) {
+			game.mgs = MainGameState::GAMEOVER;
+			PlaySound(game.assets.failBoom);
+			PlaySound(game.assets.failLaser);
+			return;
+		}
 
 		if(!game.grid.populate(game.pairsOnTimer)) {
 			if(game.grid.size.x == game.grid.size.y) {
+				if(game.grid.areaOfPopulation.y != 0) {
+					game.grid.areaOfPopulation.height = game.grid.size.y;
+				}
 				game.grid.areaOfPopulation.x = game.grid.size.x;
 				game.grid.areaOfPopulation.y = 0;
-				game.grid.areaOfPopulation.height = game.grid.size.y * 2;
 				game.grid.resizeGrid(game.grid.size.x * 2, game.grid.size.y);
 			} else {
 				game.grid.areaOfPopulation.y = game.grid.size.y;
 				game.grid.areaOfPopulation.x = 0;
-				game.grid.areaOfPopulation.width = game.grid.size.x * 2;
+				game.grid.areaOfPopulation.width = game.grid.size.x;
+				game.grid.areaOfPopulation.height = game.grid.size.y;
 				game.grid.resizeGrid(game.grid.size.x, game.grid.size.y * 2);
 			}
 			game.currentMaxTime +=
@@ -219,8 +336,14 @@ skip:
 
 	
 	BeginMode2D(game.grid.cam);
-		DrawRectangle(hoveredCell.x*10, hoveredCell.y*10, 10, 10, JAM_WHITE);
+		DrawRectangle(game.smoothHoveredCell.x*10, game.smoothHoveredCell.y*10, 10, 10, JAM_WHITE);
 		game.grid.draw(game);
+#if DEBUG
+		if(game.vizAOP)
+			DrawRectangle(game.grid.areaOfPopulation.x*10, game.grid.areaOfPopulation.y*10,
+				game.grid.areaOfPopulation.width*10, game.grid.areaOfPopulation.height*10,
+				{255, 0, 0, 128});
+#endif
 	EndMode2D();
 
 	for(int i = 0; i < 3; i++) {
@@ -230,29 +353,30 @@ skip:
 		DrawRectangleRec({(float)GetScreenWidth()-200-(i*100),
 				5, 90, 90}, JAM_WHITE);
 		bool clicked = hovered && IsMouseButtonPressed(MOUSE_BUTTON_LEFT);
+		bool inUse = game.usingItem == game.items[i].type;
 		switch(game.items[i].type) {
 			case ItemType::PORTAL_PAIR:
 				DrawTexturePro(game.assets.portalPair, ASSET_ICON_REC,
 						{(float)GetScreenWidth()-200-(i*100), 5, 90, 90}, {0,0}, 0, WHITE);
-				if(clicked && game.items[i].quantity > 0)
+				if(clicked && game.items[i].quantity > 0 && game.usingItem == ItemType::NONE)
 					game.usingItem = ItemType::PORTAL_PAIR;
 				break;
 			case ItemType::BULLDOZER:
 				DrawTexturePro(game.assets.bulldozer, ASSET_ICON_REC,
 						{(float)GetScreenWidth()-200-(i*100), 5, 90, 90}, {0,0}, 0, WHITE);
-				if(clicked && game.items[i].quantity > 0)
+				if(clicked && game.items[i].quantity > 0 && game.usingItem == ItemType::NONE)
 					game.usingItem = ItemType::BULLDOZER;
 				break;
 			case ItemType::MAGIC_WATCH:
 				DrawTexturePro(game.assets.magicWatch, ASSET_ICON_REC,
 						{(float)GetScreenWidth()-200-(i*100), 5, 90, 90}, {0,0}, 0, WHITE);
-				if(clicked && game.items[i].quantity > 0)
+				if(clicked && game.items[i].quantity > 0 && game.usingItem == ItemType::NONE)
 					game.usingItem = ItemType::MAGIC_WATCH;
 			case ItemType::NONE:
 				break;
 		}
 		DrawRectangleRounded({(float)GetScreenWidth()-200-(i*100), 105, 90, 40}, 0.5, 6,
-			hovered ? JAM_BLACK : JAM_WHITE 
+			hovered || inUse ? JAM_BLACK : JAM_WHITE 
 		);
 		if(hovered)
 			DrawRectangleRoundedLinesEx({(float)GetScreenWidth()-200-(i*100), 105, 90, 40},
@@ -261,7 +385,7 @@ skip:
 				((float)GetScreenWidth()-200-(i*100)+45), 
 				105+1, 
 				40, 
-				hovered ? JAM_WHITE : JAM_BLACK);
+				hovered || inUse ? JAM_WHITE : JAM_BLACK);
 	}
 
 	if(CheckCollisionPointRec(GetMousePosition(), SHOP_ICON_REC) || game.inShop) {
@@ -278,26 +402,53 @@ skip:
 	shopIconPos.y -= 7;
 	DrawTexturePro(game.assets.shopIcon, ASSET_ICON_REC, shopIconPos, {0,0}, 0, WHITE);
 
+	DrawRectangleRounded(SHOP_ICON_COINS, 0.5, 6, JAM_WHITE);
+	DRAWTEXTCENTER(string_format("$%d", game.coins).c_str(),
+			SHOP_ICON_COINS.x+(95/2), 200 + 95/4 - (45/2), 45, JAM_BLACK);
+
 	DrawCircle(GetScreenWidth()-50, 50, 45, JAM_RED);
 	DrawCircleSector({(float)GetScreenWidth()-50, 50}, 45, 0,
 			(360) * game.currentTime/game.currentMaxTime, 100, JAM_WHITE);
-	DRAWTEXTCENTER(string_format("%.02f", game.currentTime).c_str(),
-			GetScreenWidth()-50, 50, 30, JAM_BLACK);
+	DRAWTEXTCENTEREX(string_format("%.02f", game.currentTime).c_str(),
+			(float)GetScreenWidth()-50, 50, 30, 3, JAM_BLACK);
 
 	if(game.inShop) {
 		DrawRectangleRounded(SHOP_MENU_BACKGROUND_REC, 0.5, 6, JAM_WHITE);
 		if(CheckCollisionPointRec(GetMousePosition(), SHOP_MENU_PORTALS_REC)) {
 			DrawRectangleRounded(SHOP_MENU_PORTALS_REC, 0.5, 6, JAM_WHITE);
 			DrawRectangleRoundedLinesEx(SHOP_MENU_PORTALS_REC, 0.5, 6, 3, JAM_PURPLE);
+			if(IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && game.coins >= SHOP_PORTAL_COST) {
+				SetSoundPitch(game.assets.coin, 1);
+				PlaySound(game.assets.coin);
+				game.coins -= SHOP_PORTAL_COST;
+				game.add(ItemType::PORTAL_PAIR);
+			}
 		} else
 			DrawRectangleRounded(SHOP_MENU_PORTALS_REC, 0.5, 6, JAM_PURPLE);
 		//DrawRectangleRounded(SHOP_MENU_BULLDOZER_REC, 0.5, 6, JAM_ORANGE);
 		if(CheckCollisionPointRec(GetMousePosition(), SHOP_MENU_BULLDOZER_REC)) {
 			DrawRectangleRounded(SHOP_MENU_BULLDOZER_REC, 0.5, 6, JAM_WHITE);
 			DrawRectangleRoundedLinesEx(SHOP_MENU_BULLDOZER_REC, 0.5, 6, 3, JAM_ORANGE);
+			if(IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && game.coins >= SHOP_BULLDOZER_COST) {
+				SetSoundPitch(game.assets.coin, 1);
+				PlaySound(game.assets.coin);
+				game.coins -= SHOP_BULLDOZER_COST;
+				game.add(ItemType::BULLDOZER);
+			}
 		} else
 			DrawRectangleRounded(SHOP_MENU_BULLDOZER_REC, 0.5, 6, JAM_ORANGE);
-		DrawRectangleRounded(SHOP_MENU_MWATCH_REC, 0.5, 6, JAM_BLUE);
+
+		if(CheckCollisionPointRec(GetMousePosition(), SHOP_MENU_MWATCH_REC)) {
+			DrawRectangleRounded(SHOP_MENU_MWATCH_REC, 0.5, 6, JAM_WHITE);
+			DrawRectangleRoundedLinesEx(SHOP_MENU_MWATCH_REC, 0.5, 6, 3, JAM_BLUE);
+			if(IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && game.coins >= SHOP_MWATCH_COST) {
+				SetSoundPitch(game.assets.coin, 1);
+				PlaySound(game.assets.coin);
+				game.coins -= SHOP_MWATCH_COST;
+				game.add(ItemType::MAGIC_WATCH);
+			}
+		} else
+			DrawRectangleRounded(SHOP_MENU_MWATCH_REC, 0.5, 6, JAM_BLUE);
 
 		DrawRectangleRec(SHOP_MENU_PORTALS_ICON, JAM_BLACK);
 		DrawTexturePro(game.assets.portalPair, ASSET_ICON_REC, SHOP_MENU_PORTALS_ICON, {0,0},
@@ -309,20 +460,21 @@ skip:
 
 		//portal text
 		DRAWTEXTCENTER(string_format("Portals").c_str(), 300, 220, 25, JAM_BLACK);
-		DRAWTEXTCENTER(string_format("Cost: %d", SHOP_PORTAL_COST).c_str(), 300, 365, 25, JAM_BLACK);
+		DRAWTEXTCENTER(string_format("Cost: $%d", SHOP_PORTAL_COST).c_str(), 300, 365, 25,
+				game.coins >= SHOP_PORTAL_COST ? JAM_BLACK : JAM_RED);
 		DrawTextEx(GetFontDefault(), "A pair of portals you can place to \"wirelessly\""
 				"\nconnect stations. Portals MUST connect to the\nsame pair.", {180, 400}, 10, 1, JAM_BLACK);
 
 		DRAWTEXTCENTER(string_format("Bulldozer").c_str(), 800, 220, 25, JAM_BLACK);
-		DRAWTEXTCENTER(string_format("Cost: %d", SHOP_BULLDOZER_COST).c_str(),
-				800, 365, 25, JAM_BLACK);
+		DRAWTEXTCENTER(string_format("Cost: $%d", SHOP_BULLDOZER_COST).c_str(),
+				800, 365, 25, game.coins >= SHOP_BULLDOZER_COST ? JAM_BLACK : JAM_RED);
 		DrawTextEx(GetFontDefault(), "A literal Bulldozer to erase a station and its pair"
 				"\nregardless if its connected or not, lines and all.", {740-75, 400},
 				10, 1, JAM_BLACK);
 
 		DRAWTEXTCENTER(string_format("Magic Watch").c_str(), 1300, 220, 25, JAM_BLACK);
-		DRAWTEXTCENTER(string_format("Cost: %d", SHOP_MWATCH_COST).c_str(),
-				1300, 365, 25, JAM_BLACK);
+		DRAWTEXTCENTER(string_format("Cost: $%d", SHOP_MWATCH_COST).c_str(),
+				1300, 365, 25, game.coins >= SHOP_MWATCH_COST ? JAM_BLACK : JAM_RED);
 		DrawTextEx(GetFontDefault(), "A magic watch to give you extra time when you"
 				"\nneed it the most. Adds 10 seconds on use.", {1300-125, 400},
 				10, 1, JAM_BLACK);
@@ -350,10 +502,12 @@ void OnMainMenu(Game& game) {
 			.type = ItemType::MAGIC_WATCH,
 			.quantity = 0,
 		};
+#if DEBUG
+		for(int i = 0; i < 3; i++) game.items[i].quantity = 3;
+#endif
 	}
 	ClearBackground(JAM_BLACK);
 	DRAWTEXTCENTER("SpeedNet", GetScreenWidth()/2, 100, 30, JAM_WHITE);
-	DRAWTEXTCENTER("press Enter to begin", GetScreenWidth()/2, 800-150, 30, JAM_WHITE);
 	BeginMode2D({
 		.offset = {800, 400},
 		.target = {25, 25},
@@ -362,13 +516,69 @@ void OnMainMenu(Game& game) {
 	});
 		game.grid.draw(game);
 	EndMode2D();
+
+	DrawRectangleLines(-50, GetScreenHeight() - 150, 2000, 100, JAM_BLACK);
+	DrawRectangleLinesEx({-50, (float)GetScreenHeight() - 150, 2000, 100}, 3, JAM_WHITE);
+
+	Rectangle rec = 
+		{(float)GetScreenWidth()/2+250-200, (float)GetScreenHeight()-140, 200, 80};
+	if(CheckCollisionPointRec(GetMousePosition(), rec)) {
+		DrawRectangleRoundedLinesEx(rec, 0.5, 6, 3, JAM_WHITE);
+		DRAWTEXTCENTER("Play", rec.x + 100, (float)GetScreenHeight()-115, 40,  JAM_WHITE);
+		if(IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+			game.mgs = MainGameState::INGAME;
+			game.currentMaxTime = 5;
+			game.currentTime = 10;
+			game.grid.areaOfPopulation = {0, 0, 5, 5};
+			game.resizeCycle = 1;
+			game.usingItem = ItemType::NONE;
+			game.inShop = false;
+			game.grid.reset();
+			game.grid.populate(2);
+
+			game.items[0] = {
+				.type = ItemType::PORTAL_PAIR,
+				.quantity = 0,
+			};
+			game.items[1] = {
+				.type = ItemType::BULLDOZER,
+				.quantity = 0,
+			};
+			game.items[2] = {
+				.type = ItemType::MAGIC_WATCH,
+				.quantity = 0,
+			};
+		}
+	} else {
+		DrawRectangleRounded(rec, 0.5, 6, JAM_WHITE);
+		DRAWTEXTCENTER("Play", rec.x + 100, (float)GetScreenHeight()-115, 40,  JAM_BLACK);
+	}
+
+	rec = {(float)GetScreenWidth()/2-250, (float)GetScreenHeight()-140, 200, 80};
+	if(CheckCollisionPointRec(GetMousePosition(), rec)) {
+		DrawRectangleRoundedLinesEx(rec, 0.5, 6, 3, JAM_WHITE);
+		DRAWTEXTCENTER("Instructions", rec.x + 100, (float)GetScreenHeight()-115, 30,  JAM_WHITE);
+		if(IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+			game.mgs = MainGameState::MAINMENU;
+		}
+	} else {
+		DrawRectangleRounded(rec, 0.5, 6,JAM_WHITE);
+		DRAWTEXTCENTER("Instructions", rec.x + 100, (float)GetScreenHeight()-115, 30,  JAM_BLACK);
+	}
 }
 
 void OnPaletteTest(Game& game, Color* palette) {
 #if SKIP_PALETTE
 	game.mgs = MainGameState::MAINMENU;
 #endif
-	if(GetTime() >= 5) {
+#if DELAY_STARTUP
+	if(IsKeyPressed(KEY_ENTER)) game.beginStartup = true;
+	if(game.beginStartup) game.currentTime += GetFrameTime();
+	if(game.currentTime >= 5) {
+#else
+	game.currentTime += GetFrameTime();
+	if(game.currentTime >= 5) {
+#endif
 		game.mgs = MainGameState::MAINMENU;
 		game.grid.elements[2][2].type = GridElementType::STATION;
 		game.grid.elements[2][2].data.station = {
@@ -383,19 +593,98 @@ void OnPaletteTest(Game& game, Color* palette) {
 			.pairID = 0,
 		};
 	}
-		if(GetTime() >= 4)
-			ClearBackground(JAM_BLACK);
-		else {
-			if(game.paletteNum != (int)Clamp((GetTime()-1)/0.3f, 0, 7)) {
-				SetSoundPitch(game.assets.coin, 0.5 + (game.paletteNum * 0.25));
-				PlaySound(game.assets.coin);
-				game.paletteNum = (int)Clamp((GetTime()-1)/0.3f, 0, 7);
-			}
-			ClearBackground(palette[(int)Clamp((GetTime()-1)/0.3f, 0, 7)]);
+	if(game.currentTime >= 4)
+		ClearBackground(JAM_BLACK);
+	else {
+		if(game.paletteNum != (int)Clamp((game.currentTime-1)/0.3f, 0, 7)) {
+			SetSoundPitch(game.assets.coin, 0.5 + (game.paletteNum * 0.25));
+			PlaySound(game.assets.coin);
+			game.paletteNum = (int)Clamp((game.currentTime-1)/0.3f, 0, 7);
 		}
-		for(int i = 0; i < 8; i++) {
-			DrawRectangle(i * 80 + (800 - 80*4), 360, 80, 80, palette[i]);
-		}
-		DRAWTEXTCENTER("made in raylib", GetScreenWidth()/2, 380, 30, JAM_WHITE);
+		ClearBackground(palette[(int)Clamp((game.currentTime-1)/0.3f, 0, 7)]);
+	}
+	for(int i = 0; i < 8; i++) {
+		DrawRectangle(i * 80 + (800 - 80*4), 360, 80, 80, palette[i]);
+	}
+	DRAWTEXTCENTER("made in raylib", GetScreenWidth()/2, 380, 30, JAM_WHITE);
 	
+}
+
+void OnGameOver(Game &game) {
+	ClearBackground(JAM_BLACK);
+	BeginMode2D(game.grid.cam);
+		game.grid.draw(game);
+	EndMode2D();
+
+	DrawRectangleRounded({(float)GetScreenWidth()/2-250, 100, 500, 200}, 0.5, 6, JAM_RED);
+	DrawRectangleRoundedLinesEx({(float)GetScreenWidth()/2-250, 100, 500, 200}, 0.5, 6, 5, JAM_WHITE);
+
+	DRAWTEXTCENTEREX("GAME OVER", (float)GetScreenWidth()/2, 150, 50, 3, JAM_BLACK);
+	DRAWTEXTCENTEREX(
+			string_format(
+				"Level %d\nPairs Connected: %d\nEfficiency: %.00f%%", 
+				game.resizeCycle,
+				game.grid.numOfStations(true) / 2,
+				game.grid.stationLineRatio() * 100).c_str(),
+			(float)GetScreenWidth()/2, 200, 25, 3, JAM_BLACK);
+
+	DrawRectangleLines(-50, GetScreenHeight() - 150, 2000, 100, JAM_BLACK);
+	DrawRectangleLinesEx({-50, (float)GetScreenHeight() - 150, 2000, 100}, 3, JAM_WHITE);
+
+	Rectangle rec = 
+		{(float)GetScreenWidth()/2+250-200, (float)GetScreenHeight()-140, 200, 80};
+	if(CheckCollisionPointRec(GetMousePosition(), rec)) {
+		DrawRectangleRoundedLinesEx(rec, 0.5, 6, 3, JAM_WHITE);
+		DRAWTEXTCENTER("Restart", rec.x + 100, (float)GetScreenHeight()-115, 40,  JAM_WHITE);
+		if(IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+			game.mgs = MainGameState::INGAME;
+			game.currentMaxTime = 5;
+			game.currentTime = 10;
+			game.grid.areaOfPopulation = {0, 0, 5, 5};
+			game.grid.reset();
+			game.grid.populate(2);
+			game.resizeCycle = 1;
+			game.usingItem = ItemType::NONE;
+			game.inShop = false;
+
+			game.items[0] = {
+				.type = ItemType::PORTAL_PAIR,
+				.quantity = 0,
+			};
+			game.items[1] = {
+				.type = ItemType::BULLDOZER,
+				.quantity = 0,
+			};
+			game.items[2] = {
+				.type = ItemType::MAGIC_WATCH,
+				.quantity = 0,
+			};
+		}
+	} else {
+		DrawRectangleRounded(rec, 0.5, 6, JAM_WHITE);
+		DRAWTEXTCENTER("Restart", rec.x + 100, (float)GetScreenHeight()-115, 40,  JAM_BLACK);
+	}
+
+	rec = {(float)GetScreenWidth()/2-250, (float)GetScreenHeight()-140, 200, 80};
+	if(CheckCollisionPointRec(GetMousePosition(), rec)) {
+		DrawRectangleRoundedLinesEx(rec, 0.5, 6, 3, JAM_WHITE);
+		DRAWTEXTCENTER("Title", rec.x + 100, (float)GetScreenHeight()-115, 40,  JAM_WHITE);
+		if(IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+			game.mgs = MainGameState::MAINMENU;
+		}
+	} else {
+		DrawRectangleRounded(rec, 0.5, 6,JAM_WHITE);
+		DRAWTEXTCENTER("Title", rec.x + 100, (float)GetScreenHeight()-115, 40,  JAM_BLACK);
+	}
+}
+
+void Game::consume(ItemType item) {
+	for(auto& i: items) {
+		if(i.type == item) i.quantity--;
+	}
+}
+void Game::add(ItemType item) {
+	for(auto& i: items) {
+		if(i.type == item) i.quantity++;
+	}
 }

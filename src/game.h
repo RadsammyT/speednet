@@ -20,6 +20,9 @@
 	DrawTextEx(GetFontDefault(), str, {x-(MeasureText(str,size)/2), y}, size, space, color)
 #define V2IDX(vec) [(int)vec.y][(int)vec.x]
 
+#define RAND_FLOAT (float)(rand() % 100000) / 100000
+#define RAND_FLOAT_BI (float)(((rand() % 200000) / 200000) - 1)
+
 #define DIRCOMP(vec, x1, y1, x2, y2, head, tail) (Vector2Equals({vec.x + x1, vec.y + y1}, tail) \
 		&& Vector2Equals({vec.x + x2, vec.y + y2}, head)) \
 	|| (Vector2Equals({vec.x + x1, vec.y + y1}, head) \
@@ -27,6 +30,7 @@
 
 //UI POSITION
 #define SHOP_ICON_REC Rectangle{(float)GetScreenWidth()-100, 100, 95, 95}
+#define SHOP_ICON_COINS Rectangle{(float)GetScreenWidth()-100, 200, 95, 95/2}
 #define SHOP_MENU_BACKGROUND_REC \
 	Rectangle{100, 175, (float)GetScreenWidth()-200, 350}
 #define SHOP_MENU_PORTALS_REC \
@@ -54,6 +58,7 @@
 //BUILD CONFIGS
 #define SKIP_PALETTE 1
 #define DEBUG 1
+#define DELAY_STARTUP 0
 
 static Color palette[8] = {
 	JAM_BLACK,	
@@ -91,6 +96,7 @@ enum class LineDirs {
 
 enum class MainGameState {
 	MAINMENU,
+	INSTRUCTIONS,
 	INGAME,
 	GAMEOVER,
 	PALETTETEST
@@ -108,6 +114,11 @@ struct Assets {
 	Sound
 		timeWarning,
 		lineStep,
+		lineConnect,
+		success,
+		failLaser,
+		failBoom,
+		bulldozerSound,
 		coin;
 
 	Assets();
@@ -119,6 +130,7 @@ struct GridElement {
 		struct {
 			Color col;
 			uint32_t pairID; // this CAN be UINT32_MAX to indicate unassigned
+			uint32_t portalID; // 
 			bool survivedTimer;
 			bool connectedToPair;
 			bool connectsToAll;
@@ -158,7 +170,12 @@ struct Grid {
 	void eraseProposedLines(std::vector<Vector2>& lines);
 	void reset();
 	bool populate(int pairs);
+	bool inDanger();
+	int numOfStations(bool countConnected);
+	void bindPortalToPair(int portalID, int pairID);
+	void eraseAllOfPair(int pairID);
 	void draw(Game& game);
+	void flood();
 
 	float stationLineRatio();
 
@@ -183,12 +200,13 @@ struct Game {
 	int paletteNum = -1;
 
 	float currentMaxTime;
-	float timeUpgrade = 0.0f;
-	float currentTime;
+	float currentTime = 0;
 
 	int pairsOnTimer = 1;
 	int resizeCycle = 1;
 	
+	Vector2 smoothHoveredCell = {0,0};
+
 	Vector2 previousHeldCell = {0, 0};
 	Vector2 currentHeldCell = {0, 0};
 	Vector2 proposedLineStart = {0, 0};
@@ -199,9 +217,16 @@ struct Game {
 	bool inShop = false;
 	ItemType usingItem = ItemType::NONE;
 
-	bool portalPairPlace = false;
+	bool beginStartup = false;
 
 	std::vector<Vector2> proposedLine;
+
+#if DEBUG
+	bool vizAOP = false;
+#endif
+
+	void consume(ItemType type);
+	void add(ItemType type);
 };
 
 void OnMainMenu(Game& game);

@@ -1,5 +1,7 @@
 #include "game.h"
+#include <cassert>
 #include <cmath>
+#include <cstdint>
 #include <cstdlib>
 #include <raylib.h>
 
@@ -99,6 +101,36 @@ bool Grid::populate(int pairs) {
 	return true;
 }
 
+void Grid::eraseAllOfPair(int pairID) {
+	std::vector<Vector2> elementsOfPair; // excludes portals
+	std::vector<Vector2> portalsOfPair;
+	for(int y = 0; y < size.y; y++) {
+		for(int x = 0; x < size.x; x++) {
+			if(elements[y][x].type == GridElementType::STATION) {
+				if(elements[y][x].data.station.connectsToAll &&
+						elements[y][x].data.station.pairID == pairID) {
+					portalsOfPair.push_back({(float)x,(float)y});
+				} else {
+					if(elements[y][x].data.station.pairID != pairID) continue;
+					elementsOfPair.push_back({(float)x,(float)y});
+				}
+			}
+			if(elements[y][x].type == GridElementType::LINE) {
+				if(elements[y][x].data.line.pairID == pairID)
+					elementsOfPair.push_back({(float)x,(float)y});
+			}
+		}
+	}
+	assert(portalsOfPair.size() <= 2);
+	bool erasePortals;
+	if(portalsOfPair.size() >= 2)
+		erasePortals = elements V2IDX(portalsOfPair[0]).data.station.connectedToPair ||
+			elements V2IDX(portalsOfPair[1]).data.station.connectedToPair;
+	else erasePortals = false;
+	if(erasePortals) eraseProposedLines(portalsOfPair);
+	eraseProposedLines(elementsOfPair);
+}
+
 void Grid::draw(Game& game) {
 
 	Rectangle view = GetCameraView(cam);
@@ -110,6 +142,21 @@ void Grid::draw(Game& game) {
 		for(int x = 0; x < size.x; x++) {
 			if(!CheckCollisionRecs(view, {(float)x*10, (float)y*10, 10, 10})) continue;
 			if(elements[y][x].type == GridElementType::STATION) {
+				if(elements[y][x].data.station.connectsToAll) {
+					DrawTexturePro(game.assets.portalPair, ASSET_ICON_REC,
+							{(float)x*10, (float)y*10, 10, 10}, {0,0}, 0, WHITE);
+					if(!elements[y][x].data.station.connectedToPair)
+						DrawRectangle((float)x*10+3, (float)y*10+3, 4, 4, JAM_BLACK);
+					if( game.proposingLine && elements V2IDX(game.proposedLineStart)
+							.data.station.pairID == elements[y][x].data.station.pairID
+							) {
+						DrawCircleLines(
+								x*10+5, y*10+5,
+								3 + ((sinf(GetTime()) + 1 / 2) * 2), 
+								JAM_WHITE);
+					}
+					continue;
+				}
 				if(elements[y][x].data.station.connectedToPair)
 					DrawRectangle(x*10, y*10, 10, 10, elements[y][x].data.station.col);
 				else
@@ -120,6 +167,7 @@ void Grid::draw(Game& game) {
 							elements V2IDX(game.proposedLineStart).data.station.pairID
 							==
 							elements[y][x].data.station.pairID
+							&& !elements[y][x].data.station.connectedToPair
 						) {
 					DrawCircleLines(
 							x*10+5, y*10+5,
@@ -154,7 +202,7 @@ void Grid::draw(Game& game) {
 						DrawRectangle(x*10, y*10 + 3, 10, 4, elements[y][x].data.line.col);
 						break;
 					case LineDirs::VERT:
-						DrawRectangle(x*10 + 3, y*10, 4, 10, elements[y][x].data.line.col);
+						DrawRectangle(x*10 + 3, y*10, 4, 15, elements[y][x].data.line.col);
 						break;
 					case LineDirs::R_SHAPE:
 						DrawRectangle(x*10 + 3, y*10, 4, 6, elements[y][x].data.line.col);
@@ -225,12 +273,80 @@ void Grid::draw(Game& game) {
 	} 
 }
 
+bool Grid::inDanger() {
+	for(auto& i: elements) {
+		for(auto& j: i) {
+			if(j.type == GridElementType::STATION)
+				if(!j.data.station.connectedToPair)
+					return true;
+		}
+	}
+	return false;
+}
+
+void Grid::flood() {
+	for(auto& i: elements) {
+		for(auto& j: i) {
+			j.type = GridElementType::STATION;
+			j.data.station = {
+				.pairID = UINT32_MAX,
+				.connectedToPair = true,
+				.connectsToAll = false,
+			};
+		}
+	}
+}
+
+int Grid::numOfStations(bool countConnected) {
+	int stations = 0;
+	for(auto& i: elements) {
+		for(auto& j: i) {
+			if(j.type == GridElementType::STATION) {
+				if(countConnected) {
+					if(j.data.station.connectedToPair)
+						stations++;
+				} else stations++;
+			}
+		}
+	}
+	return stations;
+}
+
+void Grid::bindPortalToPair(int portalID, int pairID) {
+	Color pairColor = WHITE;
+	for(auto& i: elements) {
+		for(auto& j: i) {
+			if(j.type == GridElementType::STATION) {
+				if(j.data.station.connectsToAll && j.data.station.portalID == portalID) {
+					j.data.station.pairID = pairID;
+				} else {
+					if(j.data.station.pairID == pairID) {
+						pairColor = j.data.station.col;
+					}
+				}
+			}
+		}
+	}
+	for(auto& i: elements) {
+		for(auto& j: i) {
+			if(j.type == GridElementType::LINE) {
+				if(j.data.line.pairID == pairID) {
+					j.data.line.col = pairColor;
+				}
+			}
+		}
+	}
+}
+
 float Grid::stationLineRatio() {
 	int stations = 0, lines = 0;
 	for(auto& i: elements) {
 		for(auto& j: i) {
 			if(j.type == GridElementType::LINE) lines++;
-			if(j.type == GridElementType::STATION) stations++;
+			if(j.type == GridElementType::STATION) {
+				if(!j.data.station.connectsToAll)
+					stations++;
+			} 
 		}
 	}
 	if(lines == 0 || stations == 0) return 0;

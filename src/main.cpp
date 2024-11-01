@@ -16,9 +16,11 @@ int main() {
 	rlImGuiSetup(true);
 	Game game;
 	game.mgs = MainGameState::PALETTETEST;
+#if DEBUG
 	bool showDemoWindow = false;
-	bool showDebugRectangle = false;;
+	bool showDebugRectangle = false;
 	Rectangle debugRectangle = {0,0,0,0};
+#endif
 	while(!WindowShouldClose()) {
 		BeginDrawing();
 			switch(game.mgs) {
@@ -32,6 +34,9 @@ int main() {
 					OnInGame(game);
 					break;
 				case MainGameState::GAMEOVER:
+					OnGameOver(game);
+					break;
+				case MainGameState::INSTRUCTIONS:
 					break;
 			}
 #if DEBUG
@@ -47,12 +52,14 @@ int main() {
 
 					ImGui::Checkbox("demo", &showDemoWindow);
 					ImGui::Checkbox("debug rect", &showDebugRectangle);
+					ImGui::Checkbox("visualize areaOfPopulation", &game.vizAOP);
 					if(showDebugRectangle) {
 						ImGui::DragFloat4("XYWH", &debugRectangle.x);
 					}
 					ImGui::Text("FPS: %d", GetFPS());
 					ImGui::Text("MouseWorldPos: %f %f", mouseGridPos.x, mouseGridPos.y);
 					ImGui::Text("MouseWorldPos: %d %d", (int)hoveredCell.x, (int)hoveredCell.y);
+					ImGui::Text("used item: %d", static_cast<int>(game.usingItem));
 					ImGui::Text("camzoom: %f", game.grid.cam.zoom);
 					ImGui::Text("pairsOnTimer: %d", game.pairsOnTimer);
 					ImGui::Text("ratio: %f", game.grid.stationLineRatio());
@@ -75,6 +82,10 @@ int main() {
 					if(ImGui::Button("reset, repopulate")) {
 						game.grid.reset();
 						game.grid.populate(2);
+					}
+					if(ImGui::Button("ACTUALLY resize")) {
+						game.grid.flood();
+						game.currentTime = 0.1f;
 					}
 				ImGui::End();
 				if(showDemoWindow) ImGui::ShowDemoWindow();

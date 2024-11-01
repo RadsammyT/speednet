@@ -4,8 +4,8 @@
   "BoardIndex": 0,
   "BoardCount": 1,
   "AutoSave": true,
-  "Pan.X": -319.817138671875,
-  "Pan.Y": -228.296142578125,
+  "Pan.X": -481.204345703125,
+  "Pan.Y": -117.07403564453125,
   "ZoomLevel": 4,
   "TaskTransparency": 5,
   "OutlineTasks": true,
@@ -145,7 +145,7 @@
       "Progression.Current": 0,
       "Progression.Max": 0,
       "Description": "day 3 (until 3 days): same as day 2 + art",
-      "Selected": true,
+      "Selected": false,
       "TaskType.CurrentChoice": 2,
       "CreationTime": "Oct 28 2024 22:10:07"
     }, 
@@ -343,6 +343,54 @@
       "Selected": false,
       "TaskType.CurrentChoice": 2,
       "CreationTime": "Oct 28 2024 23:34:40"
+    }, 
+    {
+      "BoardIndex": 0,
+      "Position.X": 848,
+      "Position.Y": 320,
+      "Checkbox.Checked": false,
+      "Progression.Current": 0,
+      "Progression.Max": 0,
+      "Description": "bugs",
+      "Selected": false,
+      "TaskType.CurrentChoice": 2,
+      "CreationTime": "Oct 31 2024 19:32:18"
+    }, 
+    {
+      "BoardIndex": 0,
+      "Position.X": 864,
+      "Position.Y": 336,
+      "Checkbox.Checked": true,
+      "Progression.Current": 0,
+      "Progression.Max": 0,
+      "Description": "lines not drawn when moving too fast.\n\ncode some sort of smoothening to fix?",
+      "Selected": false,
+      "TaskType.CurrentChoice": 0,
+      "CreationTime": "Oct 31 2024 19:32:23"
+    }, 
+    {
+      "BoardIndex": 0,
+      "Position.X": 864,
+      "Position.Y": 352,
+      "Checkbox.Checked": true,
+      "Progression.Current": 0,
+      "Progression.Max": 0,
+      "Description": "area of population shenanigans\nmaybe",
+      "Selected": false,
+      "TaskType.CurrentChoice": 0,
+      "CreationTime": "Oct 31 2024 19:32:54"
+    }, 
+    {
+      "BoardIndex": 0,
+      "Position.X": 864,
+      "Position.Y": 368,
+      "Checkbox.Checked": false,
+      "Progression.Current": 0,
+      "Progression.Max": 0,
+      "Description": "",
+      "Selected": false,
+      "TaskType.CurrentChoice": 0,
+      "CreationTime": "Oct 31 2024 21:30:45"
     }
   ]
 }
