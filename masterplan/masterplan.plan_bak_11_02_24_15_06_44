@@ -4,8 +4,8 @@
   "BoardIndex": 0,
   "BoardCount": 1,
   "AutoSave": true,
-  "Pan.X": -481.204345703125,
-  "Pan.Y": -117.07403564453125,
+  "Pan.X": -447.8521728515625,
+  "Pan.Y": -200.03701782226562,
   "ZoomLevel": 4,
   "TaskTransparency": 5,
   "OutlineTasks": true,
@@ -391,6 +391,44 @@
       "Selected": false,
       "TaskType.CurrentChoice": 0,
       "CreationTime": "Oct 31 2024 21:30:45"
+    }, 
+    {
+      "BoardIndex": 0,
+      "Position.X": 1088,
+      "Position.Y": 352,
+      "Checkbox.Checked": false,
+      "Progression.Current": 0,
+      "Progression.Max": 0,
+      "Description": "",
+      "Selected": false,
+      "TaskType.CurrentChoice": 6,
+      "CreationTime": "Nov 1 2024 19:10:55",
+      "BezierLines": false,
+      "LineEndings": [1248, 416]
+    }, 
+    {
+      "BoardIndex": 0,
+      "Position.X": 1264,
+      "Position.Y": 416,
+      "Checkbox.Checked": false,
+      "Progression.Current": 0,
+      "Progression.Max": 0,
+      "Description": "seeing stations popping up\nin typically out-of-AOP spots\naround level 5.",
+      "Selected": false,
+      "TaskType.CurrentChoice": 2,
+      "CreationTime": "Nov 1 2024 19:11:00"
+    }, 
+    {
+      "BoardIndex": 0,
+      "Position.X": 1264,
+      "Position.Y": 464,
+      "Checkbox.Checked": false,
+      "Progression.Current": 0,
+      "Progression.Max": 0,
+      "Description": "fixed. im a dumbass. LMAO.",
+      "Selected": false,
+      "TaskType.CurrentChoice": 2,
+      "CreationTime": "Nov 1 2024 19:25:06"
     }
   ]
 }

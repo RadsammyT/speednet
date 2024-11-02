@@ -3,7 +3,9 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
+#include <map>
 #include <raylib.h>
+#include <stdexcept>
 
 Rectangle GetCameraView(Camera2D cam) {
 	Vector2 screenInWorldStart = GetScreenToWorld2D((Vector2) { 0, 0 }, cam);
@@ -82,7 +84,7 @@ bool Grid::populate(int pairs) {
 	if(freeSpaces.size() < 4) return false;
 	int colIndex = 2 + (rand()%6);
 	for(int i = 0; i < pairs * 2; i++) {
-		if(freeSpaces.size() == 0) return false;
+		if(freeSpaces.size() == 0) break;;
 		int index = rand() % freeSpaces.size();
 		auto& pos = freeSpaces[index];
 		elements[pos.second][pos.first].type = GridElementType::STATION;
@@ -147,14 +149,6 @@ void Grid::draw(Game& game) {
 							{(float)x*10, (float)y*10, 10, 10}, {0,0}, 0, WHITE);
 					if(!elements[y][x].data.station.connectedToPair)
 						DrawRectangle((float)x*10+3, (float)y*10+3, 4, 4, JAM_BLACK);
-					if( game.proposingLine && elements V2IDX(game.proposedLineStart)
-							.data.station.pairID == elements[y][x].data.station.pairID
-							) {
-						DrawCircleLines(
-								x*10+5, y*10+5,
-								3 + ((sinf(GetTime()) + 1 / 2) * 2), 
-								JAM_WHITE);
-					}
 					continue;
 				}
 				if(elements[y][x].data.station.connectedToPair)
@@ -162,18 +156,6 @@ void Grid::draw(Game& game) {
 				else
 					DrawRectangleLinesEx({(float)x*10, (float)y*10, 10, 10}, 3, 
 							elements[y][x].data.station.col);
-				if(
-						game.proposingLine &&
-							elements V2IDX(game.proposedLineStart).data.station.pairID
-							==
-							elements[y][x].data.station.pairID
-							&& !elements[y][x].data.station.connectedToPair
-						) {
-					DrawCircleLines(
-							x*10+5, y*10+5,
-							3 + ((sinf(GetTime()) + 1 / 2) * 2), 
-							JAM_WHITE);
-				}
 			}
 		}
 	}
@@ -186,6 +168,7 @@ void Grid::draw(Game& game) {
 							elements V2IDX(game.proposedLineStart).data.station.pairID
 							==
 							elements[y][x].data.station.pairID
+							&& !elements[y][x].data.station.connectedToPair
 						) {
 					DrawCircleLines(
 							x*10+5, y*10+5,
@@ -202,7 +185,7 @@ void Grid::draw(Game& game) {
 						DrawRectangle(x*10, y*10 + 3, 10, 4, elements[y][x].data.line.col);
 						break;
 					case LineDirs::VERT:
-						DrawRectangle(x*10 + 3, y*10, 4, 15, elements[y][x].data.line.col);
+						DrawRectangle(x*10 + 3, y*10, 4, 10, elements[y][x].data.line.col);
 						break;
 					case LineDirs::R_SHAPE:
 						DrawRectangle(x*10 + 3, y*10, 4, 6, elements[y][x].data.line.col);
@@ -338,14 +321,37 @@ void Grid::bindPortalToPair(int portalID, int pairID) {
 	}
 }
 
+void Grid::ensureNoSingularPair() {
+	std::map<int, std::vector<Vector2>> pairToObj;
+	for(int y = 0; y < size.y; y++) {
+		for(int x = 0; x < size.x; x++) {
+			int pairID;
+			if(elements[y][x].type == GridElementType::STATION) pairID = elements[y][x].data.station.pairID;
+			if(elements[y][x].type == GridElementType::LINE) pairID = elements[y][x].data.line.pairID;
+			if(pairToObj.find(pairID) != pairToObj.end()) {
+				pairToObj.at(pairID).push_back({(float)x,(float)y});
+			} else {
+				pairToObj.insert({pairID, {}});
+				pairToObj.at(pairID).push_back({(float)x,(float)y});
+			}
+		}
+	}
+	for(auto& [k, v]: pairToObj) {
+		if(v.size() == 1) {
+			eraseProposedLines(v);
+		}
+	}
+}
+
 float Grid::stationLineRatio() {
 	int stations = 0, lines = 0;
 	for(auto& i: elements) {
 		for(auto& j: i) {
 			if(j.type == GridElementType::LINE) lines++;
 			if(j.type == GridElementType::STATION) {
-				if(!j.data.station.connectsToAll)
-					stations++;
+				if(j.data.station.connectsToAll) continue;
+				if(!j.data.station.connectedToPair) continue;
+				stations++;
 			} 
 		}
 	}

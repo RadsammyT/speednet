@@ -37,6 +37,7 @@ int main() {
 					OnGameOver(game);
 					break;
 				case MainGameState::INSTRUCTIONS:
+					OnInstructions(game);
 					break;
 			}
 #if DEBUG
@@ -86,6 +87,12 @@ int main() {
 					if(ImGui::Button("ACTUALLY resize")) {
 						game.grid.flood();
 						game.currentTime = 0.1f;
+					}
+					if(ImGui::Button("MORE TIME")) {
+						game.currentTime += 100;
+					}
+					if(ImGui::Button("INFINITE WEALTH")) {
+						game.coins += 100;
 					}
 				ImGui::End();
 				if(showDemoWindow) ImGui::ShowDemoWindow();

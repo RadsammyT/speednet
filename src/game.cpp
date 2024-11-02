@@ -1,6 +1,7 @@
 #include <cassert>
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <raylib.h>
 #include <raymath.h>
 #include <rlgl.h>
@@ -71,6 +72,7 @@ void OnInGame(Game &game) {
 					)
 			);
 	}
+	bool previousInDanger = game.grid.inDanger();
 	Vector2 mouseGridPos = GetScreenToWorld2D(GetMousePosition(), game.grid.cam);
 	if(GetMouseWheelMove() != 0) {
 		game.grid.cam.zoom += GetMouseWheelMove();
@@ -80,8 +82,12 @@ void OnInGame(Game &game) {
 		floorf(Clamp(mouseGridPos.x, 0, (game.grid.size.x-1)*10)/10),
 		floorf(Clamp(mouseGridPos.y, 0, (game.grid.size.y-1)*10)/10),
 	};
-	game.smoothHoveredCell.x -= floorf(Clamp(game.smoothHoveredCell.x - hoveredCell.x, -1, 1));
-	game.smoothHoveredCell.y -= floorf(Clamp(game.smoothHoveredCell.y - hoveredCell.y, -1, 1));
+	game.smoothHoveredCell.x = Clamp(game.smoothHoveredCell.x, 0, game.grid.size.x-1);
+	game.smoothHoveredCell.y = Clamp(game.smoothHoveredCell.y, 0, game.grid.size.y-1);
+	if(abs(game.smoothHoveredCell.x - hoveredCell.x) > abs(game.smoothHoveredCell.y - hoveredCell.y))
+		game.smoothHoveredCell.x -= floorf(Clamp(game.smoothHoveredCell.x - hoveredCell.x, -1, 1));
+	else
+		game.smoothHoveredCell.y -= floorf(Clamp(game.smoothHoveredCell.y - hoveredCell.y, -1, 1));
 	if(game.usingItem != ItemType::NONE && !game.inShop) {
 		switch(game.usingItem) {
                 case ItemType::PORTAL_PAIR:
@@ -97,12 +103,14 @@ void OnInGame(Game &game) {
 								.portalID = game.grid.pairIDCounter,
 								.connectsToAll = true,
 							};
+						PlaySound(game.assets.lineStep);
 						game.proposedLine.push_back(game.smoothHoveredCell);
 						if(game.proposedLine.size() >= 2) {
 							game.proposedLine.clear();
 							game.grid.pairIDCounter++;
 							game.consume(ItemType::PORTAL_PAIR);
 							game.usingItem = ItemType::NONE;
+							PlaySound(game.assets.lineConnect);
 						}
 					}
 					if(IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) {
@@ -117,6 +125,10 @@ void OnInGame(Game &game) {
 					if(IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
 						int id = 0;
 						auto& cell = game.grid.elements V2IDX(game.smoothHoveredCell);
+						if(cell.type == GridElementType::UNOCCUPIED) {
+							game.usingItem = ItemType::NONE;
+							break;
+						}
 						if(cell.type == GridElementType::STATION) {
 							if(cell.data.station.connectsToAll) {
 								break;
@@ -186,12 +198,14 @@ void OnInGame(Game &game) {
 								game.grid.eraseProposedLines(game.proposedLine);
 								goto skip;
 							}
-							if( game.grid.elements 
+							if((game.grid.elements 
 									V2IDX(game.smoothHoveredCell).data.station.pairID ==
 								game.grid.elements 
 									V2IDX(game.proposedLineStart).data.station.pairID ||
 									game.grid.elements V2IDX(game.smoothHoveredCell)
-									.data.station.connectsToAll){
+									.data.station.connectsToAll)
+									&& !game.grid.elements V2IDX(game.smoothHoveredCell)
+										.data.station.connectedToPair){
 								 game.grid.elements 
 									V2IDX(game.smoothHoveredCell).data.station.connectedToPair = true;
 								if(game.grid.elements
@@ -206,6 +220,8 @@ void OnInGame(Game &game) {
 											game.grid.elements
 											V2IDX(game.proposedLineStart).data.station.pairID
 											)
+											&& !game.grid.elements
+											V2IDX(game.proposedLineStart).data.station.connectedToPair
 										) {
 										game.grid.elements V2IDX(game.smoothHoveredCell)
 											.data.station.pairID =
@@ -216,6 +232,7 @@ void OnInGame(Game &game) {
 												.data.station.portalID, 
 												game.grid.elements V2IDX(game.proposedLineStart)
 												.data.station.pairID);
+
 								} else if(game.grid.elements V2IDX(game.smoothHoveredCell)
 										.data.station.connectsToAll) {
 									game.proposingLine= false;
@@ -291,8 +308,18 @@ skip:
 		else
 			game.currentTime -= GetFrameTime()/10;
 	} else {
-		game.currentTime -= GetFrameTime() * 2;
+		if(previousInDanger) {
+			game.successAtTime = game.currentTime;
+			int oldCoins = game.coins;
+			game.coins += (int)((game.successAtTime / game.currentMaxTime) * 3);
+			if(game.coins != oldCoins) {
+				game.coinsHighlightTimer = 1.0f;
+			}
+			PlaySound(game.assets.success);
+		}
+		game.currentTime -= GetFrameTime() * game.successAtTime;
 	}
+	game.coinsHighlightTimer -= GetFrameTime();
 	if(floorf(oldTimer) != floorf(game.currentTime) && game.currentTime <= 5 &&
 			game.grid.inDanger()) {
 		PlaySound(game.assets.timeWarning);
@@ -307,6 +334,8 @@ skip:
 			PlaySound(game.assets.failBoom);
 			PlaySound(game.assets.failLaser);
 			return;
+		} else {
+			game.successAtTime = 0.000000f;
 		}
 
 		if(!game.grid.populate(game.pairsOnTimer)) {
@@ -328,8 +357,13 @@ skip:
 				sqrtf(game.currentMaxTime) * ((float)game.resizeCycle/sqrtf((float)game.resizeCycle));
 			game.resizeCycle++;
 			game.pairsOnTimer++;
+			game.coinsHighlightTimer = 2.0f;
 			game.coins += (int)(game.grid.stationLineRatio() * 100)/2;
+			PlaySound(game.assets.coin);
 			game.grid.populate(game.pairsOnTimer);
+			game.grid.ensureNoSingularPair();
+		} else {
+			game.grid.ensureNoSingularPair();
 		}
 		game.currentTime = game.currentMaxTime;
 	}
@@ -404,13 +438,13 @@ skip:
 
 	DrawRectangleRounded(SHOP_ICON_COINS, 0.5, 6, JAM_WHITE);
 	DRAWTEXTCENTER(string_format("$%d", game.coins).c_str(),
-			SHOP_ICON_COINS.x+(95/2), 200 + 95/4 - (45/2), 45, JAM_BLACK);
+			SHOP_ICON_COINS.x+(95/2), 200 + 95/4 - (45/2), 45, game.coinsHighlightTimer > 0 ? JAM_GREEN : JAM_BLACK);
 
 	DrawCircle(GetScreenWidth()-50, 50, 45, JAM_RED);
 	DrawCircleSector({(float)GetScreenWidth()-50, 50}, 45, 0,
 			(360) * game.currentTime/game.currentMaxTime, 100, JAM_WHITE);
 	DRAWTEXTCENTEREX(string_format("%.02f", game.currentTime).c_str(),
-			(float)GetScreenWidth()-50, 50, 30, 3, JAM_BLACK);
+			(float)GetScreenWidth()-50, 50, 30, 3, FloatEquals(game.successAtTime, 0.00000f) ? JAM_BLACK : JAM_GREEN);
 
 	if(game.inShop) {
 		DrawRectangleRounded(SHOP_MENU_BACKGROUND_REC, 0.5, 6, JAM_WHITE);
@@ -463,13 +497,17 @@ skip:
 		DRAWTEXTCENTER(string_format("Cost: $%d", SHOP_PORTAL_COST).c_str(), 300, 365, 25,
 				game.coins >= SHOP_PORTAL_COST ? JAM_BLACK : JAM_RED);
 		DrawTextEx(GetFontDefault(), "A pair of portals you can place to \"wirelessly\""
-				"\nconnect stations. Portals MUST connect to the\nsame pair.", {180, 400}, 10, 1, JAM_BLACK);
+				"\nconnect stations. Portals MUST connect to the"
+				"\nsame pair. On use, press LMB on an empty square to"
+				"\nplace one portal of two. Cancel with RMB.", {180, 400}, 10, 1, JAM_BLACK);
 
 		DRAWTEXTCENTER(string_format("Bulldozer").c_str(), 800, 220, 25, JAM_BLACK);
 		DRAWTEXTCENTER(string_format("Cost: $%d", SHOP_BULLDOZER_COST).c_str(),
 				800, 365, 25, game.coins >= SHOP_BULLDOZER_COST ? JAM_BLACK : JAM_RED);
 		DrawTextEx(GetFontDefault(), "A literal Bulldozer to erase a station and its pair"
-				"\nregardless if its connected or not, lines and all.", {740-75, 400},
+				"\nregardless if its connected or not, lines and all."
+				"\nOn use, press LMB over a station/line to erase all"
+				"\nassociated with it. Cannot be used on totally\n unconnected portals. Cancel with RMB.", {740-75, 400},
 				10, 1, JAM_BLACK);
 
 		DRAWTEXTCENTER(string_format("Magic Watch").c_str(), 1300, 220, 25, JAM_BLACK);
@@ -482,32 +520,8 @@ skip:
 }
 
 void OnMainMenu(Game& game) {
-	if(IsKeyPressed(KEY_ENTER)) {
-		game.mgs = MainGameState::INGAME;
-		game.currentMaxTime = 5;
-		game.currentTime = 10;
-		game.grid.areaOfPopulation = {0, 0, 5, 5};
-		game.grid.reset();
-		game.grid.populate(2);
-
-		game.items[0] = {
-			.type = ItemType::PORTAL_PAIR,
-			.quantity = 0,
-		};
-		game.items[1] = {
-			.type = ItemType::BULLDOZER,
-			.quantity = 0,
-		};
-		game.items[2] = {
-			.type = ItemType::MAGIC_WATCH,
-			.quantity = 0,
-		};
-#if DEBUG
-		for(int i = 0; i < 3; i++) game.items[i].quantity = 3;
-#endif
-	}
 	ClearBackground(JAM_BLACK);
-	DRAWTEXTCENTER("SpeedNet", GetScreenWidth()/2, 100, 30, JAM_WHITE);
+	DRAWTEXTCENTER("SpeedNet", GetScreenWidth()/2, 100, 50, JAM_WHITE);
 	BeginMode2D({
 		.offset = {800, 400},
 		.target = {25, 25},
@@ -517,7 +531,7 @@ void OnMainMenu(Game& game) {
 		game.grid.draw(game);
 	EndMode2D();
 
-	DrawRectangleLines(-50, GetScreenHeight() - 150, 2000, 100, JAM_BLACK);
+	DrawRectangle(-50, GetScreenHeight() - 150, 2000, 100, JAM_BLACK);
 	DrawRectangleLinesEx({-50, (float)GetScreenHeight() - 150, 2000, 100}, 3, JAM_WHITE);
 
 	Rectangle rec = 
@@ -526,28 +540,8 @@ void OnMainMenu(Game& game) {
 		DrawRectangleRoundedLinesEx(rec, 0.5, 6, 3, JAM_WHITE);
 		DRAWTEXTCENTER("Play", rec.x + 100, (float)GetScreenHeight()-115, 40,  JAM_WHITE);
 		if(IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+			game.reset();
 			game.mgs = MainGameState::INGAME;
-			game.currentMaxTime = 5;
-			game.currentTime = 10;
-			game.grid.areaOfPopulation = {0, 0, 5, 5};
-			game.resizeCycle = 1;
-			game.usingItem = ItemType::NONE;
-			game.inShop = false;
-			game.grid.reset();
-			game.grid.populate(2);
-
-			game.items[0] = {
-				.type = ItemType::PORTAL_PAIR,
-				.quantity = 0,
-			};
-			game.items[1] = {
-				.type = ItemType::BULLDOZER,
-				.quantity = 0,
-			};
-			game.items[2] = {
-				.type = ItemType::MAGIC_WATCH,
-				.quantity = 0,
-			};
 		}
 	} else {
 		DrawRectangleRounded(rec, 0.5, 6, JAM_WHITE);
@@ -559,7 +553,7 @@ void OnMainMenu(Game& game) {
 		DrawRectangleRoundedLinesEx(rec, 0.5, 6, 3, JAM_WHITE);
 		DRAWTEXTCENTER("Instructions", rec.x + 100, (float)GetScreenHeight()-115, 30,  JAM_WHITE);
 		if(IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
-			game.mgs = MainGameState::MAINMENU;
+			game.mgs = MainGameState::INSTRUCTIONS;
 		}
 	} else {
 		DrawRectangleRounded(rec, 0.5, 6,JAM_WHITE);
@@ -579,6 +573,7 @@ void OnPaletteTest(Game& game, Color* palette) {
 	game.currentTime += GetFrameTime();
 	if(game.currentTime >= 5) {
 #endif
+		PlaySound(game.assets.bulldozerSound);
 		game.mgs = MainGameState::MAINMENU;
 		game.grid.elements[2][2].type = GridElementType::STATION;
 		game.grid.elements[2][2].data.station = {
@@ -592,6 +587,7 @@ void OnPaletteTest(Game& game, Color* palette) {
 			.col = JAM_RED,
 			.pairID = 0,
 		};
+		SetSoundPitch(game.assets.coin, 1.0f);
 	}
 	if(game.currentTime >= 4)
 		ClearBackground(JAM_BLACK);
@@ -608,12 +604,20 @@ void OnPaletteTest(Game& game, Color* palette) {
 	}
 	DRAWTEXTCENTER("made in raylib", GetScreenWidth()/2, 380, 30, JAM_WHITE);
 	
+#if SKIP_PALETTE
+	SetSoundPitch(game.assets.coin, 1.0f);
+#endif
 }
 
 void OnGameOver(Game &game) {
 	ClearBackground(JAM_BLACK);
 	BeginMode2D(game.grid.cam);
 		game.grid.draw(game);
+#if DEBUG
+		if(game.vizAOP)
+			DrawRectangle(game.grid.areaOfPopulation.x*10, game.grid.areaOfPopulation.y*10,
+					game.grid.areaOfPopulation.width*10, game.grid.areaOfPopulation.height*10, {255,0,0,128});
+#endif
 	EndMode2D();
 
 	DrawRectangleRounded({(float)GetScreenWidth()/2-250, 100, 500, 200}, 0.5, 6, JAM_RED);
@@ -628,7 +632,7 @@ void OnGameOver(Game &game) {
 				game.grid.stationLineRatio() * 100).c_str(),
 			(float)GetScreenWidth()/2, 200, 25, 3, JAM_BLACK);
 
-	DrawRectangleLines(-50, GetScreenHeight() - 150, 2000, 100, JAM_BLACK);
+	DrawRectangle(-50, GetScreenHeight() - 150, 2000, 100, JAM_BLACK);
 	DrawRectangleLinesEx({-50, (float)GetScreenHeight() - 150, 2000, 100}, 3, JAM_WHITE);
 
 	Rectangle rec = 
@@ -638,27 +642,7 @@ void OnGameOver(Game &game) {
 		DRAWTEXTCENTER("Restart", rec.x + 100, (float)GetScreenHeight()-115, 40,  JAM_WHITE);
 		if(IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
 			game.mgs = MainGameState::INGAME;
-			game.currentMaxTime = 5;
-			game.currentTime = 10;
-			game.grid.areaOfPopulation = {0, 0, 5, 5};
-			game.grid.reset();
-			game.grid.populate(2);
-			game.resizeCycle = 1;
-			game.usingItem = ItemType::NONE;
-			game.inShop = false;
-
-			game.items[0] = {
-				.type = ItemType::PORTAL_PAIR,
-				.quantity = 0,
-			};
-			game.items[1] = {
-				.type = ItemType::BULLDOZER,
-				.quantity = 0,
-			};
-			game.items[2] = {
-				.type = ItemType::MAGIC_WATCH,
-				.quantity = 0,
-			};
+			game.reset();
 		}
 	} else {
 		DrawRectangleRounded(rec, 0.5, 6, JAM_WHITE);
@@ -671,11 +655,79 @@ void OnGameOver(Game &game) {
 		DRAWTEXTCENTER("Title", rec.x + 100, (float)GetScreenHeight()-115, 40,  JAM_WHITE);
 		if(IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
 			game.mgs = MainGameState::MAINMENU;
+			game.reset();
 		}
 	} else {
 		DrawRectangleRounded(rec, 0.5, 6,JAM_WHITE);
 		DRAWTEXTCENTER("Title", rec.x + 100, (float)GetScreenHeight()-115, 40,  JAM_BLACK);
 	}
+}
+
+void OnInstructions(Game &game) {
+	ClearBackground(JAM_BLACK);
+	DrawRectangle(-50, GetScreenHeight() - 150, 2000, 100, JAM_BLACK);
+	DrawRectangleLinesEx({-50, (float)GetScreenHeight() - 150, 2000, 100}, 3, JAM_WHITE);
+
+	DrawText(
+			"SpeedNet is a simple game about connections. It is not a relaxing one."
+			"\n\nYou connect multiple pairs of stations within a grid while constantly "
+			"\nfighting a time limit. If the timer reaches 0 and a single station is left"
+			"\nunconnected, the game is over.\n\n"
+			"Once the grid is sufficiently filled enough, it will expand to double its area"
+			"\nwith more pairs to connect at a time."
+			"\n\nWhile hovering over an unconnected station, hold LMB and move the mouse"
+			"\nto navigate the empty space to connect to that station's pair. A thin"
+			"\ncircle will appear over both stations while doing this."
+			"\n\nAfter the grid resizes, or if you connect stations fast enough,"
+			"\nyou will get coins based on your performance which you can then use"
+			"\nto spend on 3 items in the shop that can be accessed at the top-right."
+			"\nThe items will be described in-game.", 
+			50, 50, 25, JAM_WHITE);
+
+	Rectangle rec = 
+		{(float)GetScreenWidth()/2-200, (float)GetScreenHeight()-140, 400, 80};
+	if(CheckCollisionPointRec(GetMousePosition(), rec)) {
+		DrawRectangleRoundedLinesEx(rec, 0.5, 6, 3, JAM_WHITE);
+		DRAWTEXTCENTER("To Title", rec.x + 200, (float)GetScreenHeight()-115, 40,  JAM_WHITE);
+		if(IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+			game.mgs = MainGameState::MAINMENU;
+		}
+	} else {
+		DrawRectangleRounded(rec, 0.5, 6, JAM_WHITE);
+		DRAWTEXTCENTER("To Title", rec.x + 200, (float)GetScreenHeight()-115, 40,  JAM_BLACK);
+	}
+}
+
+void Game::reset() {
+	grid.cam = {
+		.offset = {800, 400},
+		.target = {25, 25},
+		.rotation = 0,
+		.zoom = 6,
+	};
+	currentMaxTime = 5;
+	currentTime = 10;
+	coins = 0;
+	grid.areaOfPopulation = {0, 0, 5, 5};
+	grid.reset();
+	grid.populate(2);
+	resizeCycle = 1;
+	pairsOnTimer = 1;
+	usingItem = ItemType::NONE;
+	inShop = false;
+
+	items[0] = {
+		.type = ItemType::PORTAL_PAIR,
+		.quantity = 0,
+	};
+	items[1] = {
+		.type = ItemType::BULLDOZER,
+		.quantity = 0,
+	};
+	items[2] = {
+		.type = ItemType::MAGIC_WATCH,
+		.quantity = 0,
+	};
 }
 
 void Game::consume(ItemType item) {

@@ -51,13 +51,13 @@
 
 //SHOP COSTS
 #define SHOP_PORTAL_COST 5
-#define SHOP_BULLDOZER_COST 10
-#define SHOP_MWATCH_COST 12
+#define SHOP_BULLDOZER_COST 15
+#define SHOP_MWATCH_COST 25
 #define SHOP_TIMEUPGRADE_COST 20
 
 //BUILD CONFIGS
-#define SKIP_PALETTE 1
-#define DEBUG 1
+#define SKIP_PALETTE 0
+#define DEBUG 0
 #define DELAY_STARTUP 0
 
 static Color palette[8] = {
@@ -176,6 +176,7 @@ struct Grid {
 	void eraseAllOfPair(int pairID);
 	void draw(Game& game);
 	void flood();
+	void ensureNoSingularPair();
 
 	float stationLineRatio();
 
@@ -193,7 +194,9 @@ struct Game {
 	Grid grid;
 
 	Item items[3];
+
 	int coins = 0;
+	float coinsHighlightTimer = 0;
 
 	Assets assets;
 
@@ -201,6 +204,7 @@ struct Game {
 
 	float currentMaxTime;
 	float currentTime = 0;
+	float successAtTime = 0;
 
 	int pairsOnTimer = 1;
 	int resizeCycle = 1;
@@ -227,9 +231,11 @@ struct Game {
 
 	void consume(ItemType type);
 	void add(ItemType type);
+	void reset();
 };
 
 void OnMainMenu(Game& game);
+void OnInstructions(Game& game);
 void OnInGame(Game& game);
 void OnGameOver(Game& game);
 void OnPaletteTest(Game& game, Color* palette);
