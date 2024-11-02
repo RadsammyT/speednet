@@ -206,6 +206,9 @@ struct Game {
 	float currentTime = 0;
 	float successAtTime = 0;
 
+	float moveToTime = 0;
+	bool mWatchSound = false;
+
 	int pairsOnTimer = 1;
 	int resizeCycle = 1;
 	

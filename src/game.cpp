@@ -144,9 +144,11 @@ void OnInGame(Game &game) {
 					}
 					break;
                 case ItemType::MAGIC_WATCH:
-					game.currentTime += 10;
-					game.usingItem = ItemType::NONE;
-					game.consume(ItemType::MAGIC_WATCH);
+					if(!game.mWatchSound) {
+						game.moveToTime = game.currentTime + 10;
+						PlaySound(game.assets.success);
+						game.consume(ItemType::MAGIC_WATCH);
+					}
 					break;
                 case ItemType::NONE:
 					assert(game.usingItem != ItemType::NONE);
@@ -305,8 +307,21 @@ skip:
 	if(game.grid.inDanger()) {
 		if(!game.inShop && game.usingItem == ItemType::NONE)
 			game.currentTime -= GetFrameTime();
-		else
-			game.currentTime -= GetFrameTime()/10;
+		else {
+			if(!FloatEquals(game.moveToTime, 0.0000f)) {
+				if(!game.mWatchSound) {
+					PlaySound(game.assets.success);
+					game.mWatchSound = true;
+				}
+				game.currentTime += GetFrameTime() * game.moveToTime;
+				if(game.currentTime >= game.moveToTime) {
+					game.moveToTime = 0.00000f;
+					game.usingItem = ItemType::NONE;
+					game.mWatchSound = false;
+				}
+			} else
+				game.currentTime -= GetFrameTime()/10;
+		}
 	} else {
 		if(previousInDanger) {
 			game.successAtTime = game.currentTime;
@@ -444,7 +459,9 @@ skip:
 	DrawCircleSector({(float)GetScreenWidth()-50, 50}, 45, 0,
 			(360) * game.currentTime/game.currentMaxTime, 100, JAM_WHITE);
 	DRAWTEXTCENTEREX(string_format("%.02f", game.currentTime).c_str(),
-			(float)GetScreenWidth()-50, 50, 30, 3, FloatEquals(game.successAtTime, 0.00000f) ? JAM_BLACK : JAM_GREEN);
+			(float)GetScreenWidth()-50, 50, 30, 3,
+			FloatEquals(game.successAtTime, 0.00000f) && FloatEquals(game.moveToTime, 0.00000f)
+			? JAM_BLACK : JAM_GREEN);
 
 	if(game.inShop) {
 		DrawRectangleRounded(SHOP_MENU_BACKGROUND_REC, 0.5, 6, JAM_WHITE);
@@ -521,7 +538,8 @@ skip:
 
 void OnMainMenu(Game& game) {
 	ClearBackground(JAM_BLACK);
-	DRAWTEXTCENTER("SpeedNet", GetScreenWidth()/2, 100, 50, JAM_WHITE);
+	DRAWTEXTCENTER("SpeedNet", GetScreenWidth()/2, 100, 75, JAM_WHITE);
+	DRAWTEXTCENTER("by RadsammyT", GetScreenWidth()/2, 180, 40, JAM_WHITE);
 	BeginMode2D({
 		.offset = {800, 400},
 		.target = {25, 25},
