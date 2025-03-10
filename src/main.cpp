@@ -11,7 +11,7 @@ int main() {
 
 	InitAudioDevice();
 
-	InitWindow(1600, 800, "RaylibJam");
+	InitWindow(1600, 800, "SpeedNet");
 	SetTargetFPS(60);
 	rlImGuiSetup(true);
 	Game game;

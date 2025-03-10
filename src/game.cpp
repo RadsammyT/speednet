@@ -59,6 +59,8 @@ Assets::Assets() {
 
 void OnInGame(Game &game) {
 	ClearBackground(JAM_BLACK);
+
+	// Cam Movement
 	if(IsMouseButtonDown(MOUSE_BUTTON_MIDDLE) && !game.inShop) {
 		game.grid.cam.target = 
 			Vector2Add(
@@ -72,12 +74,23 @@ void OnInGame(Game &game) {
 					)
 			);
 	}
+
+	// If true, and all stations filled, then we run the success sequence  
 	bool previousInDanger = game.grid.inDanger();
+
+
 	Vector2 mouseGridPos = GetScreenToWorld2D(GetMousePosition(), game.grid.cam);
 	if(GetMouseWheelMove() != 0) {
+#ifdef PLATFORM_WEB
+		//because zoom on web is more fucked
+		game.grid.cam.zoom += GetMouseWheelMove() / 3;
+#else
 		game.grid.cam.zoom += GetMouseWheelMove();
+#endif
 	}
 	game.grid.cam.zoom = Clamp(game.grid.cam.zoom, 1.5, 6);
+
+	// Cell interpolation because if we dont do this then we get skipped lines
 	Vector2 hoveredCell = {
 		floorf(Clamp(mouseGridPos.x, 0, (game.grid.size.x-1)*10)/10),
 		floorf(Clamp(mouseGridPos.y, 0, (game.grid.size.y-1)*10)/10),
@@ -88,6 +101,8 @@ void OnInGame(Game &game) {
 		game.smoothHoveredCell.x -= floorf(Clamp(game.smoothHoveredCell.x - hoveredCell.x, -1, 1));
 	else
 		game.smoothHoveredCell.y -= floorf(Clamp(game.smoothHoveredCell.y - hoveredCell.y, -1, 1));
+
+	// Item Use Logic. Kill Me.
 	if(game.usingItem != ItemType::NONE && !game.inShop) {
 		switch(game.usingItem) {
                 case ItemType::PORTAL_PAIR:
@@ -524,7 +539,8 @@ skip:
 		DrawTextEx(GetFontDefault(), "A literal Bulldozer to erase a station and its pair"
 				"\nregardless if its connected or not, lines and all."
 				"\nOn use, press LMB over a station/line to erase all"
-				"\nassociated with it. Cannot be used on totally\n unconnected portals. Cancel with RMB.", {740-75, 400},
+				"\nassociated with it. Cannot be used on totally"
+				"\n unconnected portals. Cancel with RMB.", {740-75, 400},
 				10, 1, JAM_BLACK);
 
 		DRAWTEXTCENTER(string_format("Magic Watch").c_str(), 1300, 220, 25, JAM_BLACK);
@@ -538,8 +554,8 @@ skip:
 
 void OnMainMenu(Game& game) {
 	ClearBackground(JAM_BLACK);
-	DRAWTEXTCENTER("SpeedNet", GetScreenWidth()/2, 100, 75, JAM_WHITE);
-	DRAWTEXTCENTER("by RadsammyT", GetScreenWidth()/2, 180, 40, JAM_WHITE);
+	DRAWTEXTCENTER("SpeedNet", (float)GetScreenWidth()/2, 100, 75, JAM_WHITE);
+	DRAWTEXTCENTER("by RadsammyT", (float)GetScreenWidth()/2, 180, 40, JAM_WHITE);
 	BeginMode2D({
 		.offset = {800, 400},
 		.target = {25, 25},
@@ -620,7 +636,7 @@ void OnPaletteTest(Game& game, Color* palette) {
 	for(int i = 0; i < 8; i++) {
 		DrawRectangle(i * 80 + (800 - 80*4), 360, 80, 80, palette[i]);
 	}
-	DRAWTEXTCENTER("made in raylib", GetScreenWidth()/2, 380, 30, JAM_WHITE);
+	DRAWTEXTCENTER("made in raylib", (float)GetScreenWidth()/2, 380, 30, JAM_WHITE);
 	
 #if SKIP_PALETTE
 	SetSoundPitch(game.assets.coin, 1.0f);

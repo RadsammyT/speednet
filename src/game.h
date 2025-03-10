@@ -15,7 +15,7 @@
 #define JAM_YELLOW	CLITERAL(Color){230, 218, 41, 255}
 #define JAM_GREEN	CLITERAL(Color){40, 198, 65, 255}
 
-#define DRAWTEXTCENTER(str, x, y, size, color) DrawText(str, x-(MeasureText(str,size)/2), y, size, color)
+#define DRAWTEXTCENTER(str, x, y, size, color) DrawText(str, x-((float)MeasureText(str,size)/2), y, size, color)
 #define DRAWTEXTCENTEREX(str, x, y, size, space, color) \
 	DrawTextEx(GetFontDefault(), str, {x-(MeasureText(str,size)/2), y}, size, space, color)
 #define V2IDX(vec) [(int)vec.y][(int)vec.x]
@@ -57,7 +57,7 @@
 
 //BUILD CONFIGS
 #define SKIP_PALETTE 0
-#define DEBUG 0
+#define DEBUG 1
 #define DELAY_STARTUP 0
 
 static Color palette[8] = {
@@ -228,9 +228,7 @@ struct Game {
 
 	std::vector<Vector2> proposedLine;
 
-#if DEBUG
 	bool vizAOP = false;
-#endif
 
 	void consume(ItemType type);
 	void add(ItemType type);

@@ -5,7 +5,6 @@
 #include <cstdlib>
 #include <map>
 #include <raylib.h>
-#include <stdexcept>
 
 Rectangle GetCameraView(Camera2D cam) {
 	Vector2 screenInWorldStart = GetScreenToWorld2D((Vector2) { 0, 0 }, cam);
